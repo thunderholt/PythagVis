@@ -1,0 +1,379 @@
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body {
+        margin: 0px;
+        font-family: arial;
+        font-size: 14px;
+        color: #5c6d70;
+      }
+
+      header {
+        padding: 20px;
+        background-color: #484a47;
+      }
+
+      h1 {
+        font-size: 20px;
+        margin-top: 0px;
+        margin-bottom: 0px;
+        text-align: center;
+        color: #e0ac9d;
+      }
+
+      .ui {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+
+      .inputs {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        font-size: 20px;
+        padding: 10px;
+      }
+
+      .inputs .field {
+        margin-right: 20px;
+      }
+
+      .inputs .field:last-child {
+        margin-right: 0px;
+      }
+
+      .inputs input {
+        width: 100px;
+        height: 40px;
+        font-size: 20px;
+        padding-left: 10px;
+        border-radius: 10px;
+        border: solid #5c6d70 2px;
+        color: #5c6d70;
+      }
+
+      .inputs input:focus {
+        outline: none;
+      }
+
+      .calculations {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ui">
+      <header>
+        <h1>Pythagoras Theorem Visualiser</h1>
+      </header>
+      <div class="inputs">
+        <div class="field">
+          <label for="a">A</label>
+          <input
+            id="a"
+            type="number"
+            value="3"
+            onchange="update()"
+            onkeyup="update()"
+            min="1"
+          />
+        </div>
+        <div class="field">
+          <label for="b">B</label>
+          <input
+            id="b"
+            type="number"
+            value="4"
+            onchange="update()"
+            onkeyup="update()"
+            min="1"
+          />
+        </div>
+      </div>
+      <div style="flex: 1;">
+        <canvas id="canvas" style="width: 100%; height: 100%;"></canvas>
+      </div>
+      <div class="calculations">
+        <div>
+          <p>
+            A = &radic;(C&sup2; - B&sup2;) = &radic;(<span
+              data-value="cSqr"
+            ></span>
+            - <span data-value="bSqr"></span>) = &radic;<span
+              data-value="aSqr"
+            ></span>
+            = <span data-value="a"></span>
+          </p>
+          <p>
+            B = &radic;(C&sup2; - A&sup2;) = &radic;(<span
+              data-value="cSqr"
+            ></span>
+            - <span data-value="aSqr"></span>) = &radic;<span
+              data-value="bSqr"
+            ></span>
+            = <span data-value="b"></span>
+          </p>
+          <p>
+            C = &radic;(A&sup2; + B&sup2;) = &radic;(<span
+              data-value="aSqr"
+            ></span>
+            + <span data-value="bSqr"></span>) = &radic;<span
+              data-value="cSqr"
+            ></span>
+            = <span data-value="c"></span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </body>
+  <script>
+    let Vec2 = {
+      scale: function (v, s) {
+        return [v[0] * s, v[1] * s];
+      },
+      add: function (v0, v1) {
+        return [v0[0] + v1[0], v0[1] + v1[1]];
+      },
+      mul: function (v0, v1) {
+        return [v0[0] * v1[0], v0[1] * v1[1]];
+      },
+    };
+
+    function calculateWorldSpacePoints(a, b, c) {
+      let p = [];
+      p[0] = [0, 0]; // Triangle bottom left.
+      p[1] = [a, b]; // Triangle top right.
+      p[2] = [a, 0]; // Triangle bottom right.
+      p[3] = Vec2.add(p[2], [0, -a]); // A square bottom right.
+      p[4] = Vec2.add(p[3], [-a, 0]); // A square bottom left.
+      p[5] = Vec2.add(p[1], [b, 0]); // B square top right.
+      p[6] = Vec2.add(p[5], [0, -b]); // B square bottom right.
+      p[7] = [-p[1][1], p[1][0]]; // C square top left.
+      p[8] = Vec2.add(p[7], p[1]); // C square top right.
+      p[9] = Vec2.add(p[0], [a / 2, 0]); // A side label.
+      p[10] = Vec2.add(p[2], [0, b / 2]); // B side label.
+      p[11] = Vec2.add(p[0], [a / 2, b / 2]); // C side label.
+      p[12] = Vec2.add(p[0], [a / 2, -a / 2]); // A square label.
+      p[13] = Vec2.add(p[2], [b / 2, b / 2]); // B square label.
+      p[14] = Vec2.add(Vec2.scale(p[7], 0.5), Vec2.scale(p[1], 0.5)); // C square label.
+      return p;
+    }
+
+    function transformPointsIntoScreenSpace(points) {
+      // Translate the points so that they are all positive.
+      let minXY = calculateMinXY(points);
+
+      for (let i = 0; i < points.length; i++) {
+        points[i] = Vec2.add(points[i], [-minXY[0], -minXY[1]]);
+      }
+
+      // Scale the points so that they fit nicely on the screen.
+      let maxXY = calculateMaxXY(points);
+
+      let scaleFactor = calculateScaleFactor(canvas, maxXY);
+
+      for (let i = 0; i < points.length; i++) {
+        points[i] = Vec2.scale(points[i], scaleFactor);
+      }
+
+      // Translate the points so that the whiole diagram is center aligned.
+      let xCentreNudge = (canvas.width - maxXY[0] * scaleFactor) / 2;
+      let yCentreNudge = (canvas.height - maxXY[1] * scaleFactor) / 2;
+
+      for (let i = 0; i < points.length; i++) {
+        points[i] = Vec2.add(points[i], [xCentreNudge, yCentreNudge]);
+      }
+
+      // Invert the Y axis to bring us into screen space.
+      for (let i = 0; i < points.length; i++) {
+        points[i][1] = canvas.height - points[i][1];
+      }
+    }
+
+    function calculateMinXY(points) {
+      let minXY = [points[0][0], points[0][1]];
+      for (let i = 0; i < points.length; i++) {
+        let x = points[i][0];
+        if (x < minXY[0]) {
+          minXY[0] = x;
+        }
+
+        let y = points[i][1];
+        if (y < minXY[1]) {
+          minXY[1] = y;
+        }
+      }
+      return minXY;
+    }
+
+    function calculateMaxXY(points) {
+      let maxXY = [points[0][0], points[0][1]];
+      for (let i = 0; i < points.length; i++) {
+        let x = points[i][0];
+        if (x > maxXY[0]) {
+          maxXY[0] = x;
+        }
+
+        let y = points[i][1];
+        if (y > maxXY[1]) {
+          maxXY[1] = y;
+        }
+      }
+      return maxXY;
+    }
+
+    function calculateScaleFactor(canvas, maxXY) {
+      let borderSize = 50;
+      let scaleFactorX = (canvas.width - borderSize) / maxXY[0];
+      let scaleFactorY = (canvas.height - borderSize) / maxXY[1];
+      return Math.min(scaleFactorX, scaleFactorY);
+    }
+
+    function drawPolygon(context, points, colour, fill) {
+      context.fillStyle = colour;
+      context.beginPath();
+      context.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i++) {
+        context.lineTo(points[i][0], points[i][1]);
+      }
+      context.closePath();
+      if (fill) {
+        context.fill();
+      } else {
+        context.stroke();
+      }
+    }
+
+    function drawDiagram(context, a, b, c, p) {
+      // Draw side A square.
+      drawPolygon(context, [p[0], p[2], p[3], p[4]], "#E0AC9D", true);
+
+      // Draw side B square.
+      drawPolygon(context, [p[1], p[5], p[6], p[2]], "#E88873", true);
+
+      // Draw side c square.
+      drawPolygon(context, [p[0], p[7], p[8], p[1]], "#A37774", true);
+
+      // Draw the triangle.
+      drawPolygon(context, [p[0], p[1], p[2]], "#000", false);
+
+      // Draw the right angle.
+      let rightAngleSize = 10;
+      context.beginPath();
+      context.moveTo(p[2][0] - rightAngleSize, p[2][1]);
+      context.lineTo(p[2][0] - rightAngleSize, p[2][1] - rightAngleSize);
+      context.lineTo(p[2][0], p[2][1] - rightAngleSize);
+      context.stroke();
+
+      // Draw side name labels.
+      let smallLabelSize = 12;
+      drawLabel(context, p[9], [0, -1], "A", smallLabelSize, "#000");
+      drawLabel(context, p[10], [-1, 0], "B", smallLabelSize, "#000");
+      drawLabel(context, p[11], [1, 1], "C", smallLabelSize, "#000");
+
+      // Draw side lengths labels.
+      drawLabel(context, p[9], [0, 1], a, smallLabelSize, "#000");
+      drawLabel(context, p[10], [1, 0], b, smallLabelSize, "#00");
+      drawLabel(context, p[11], [-1, -1], c, smallLabelSize, "#00");
+
+      // Draw the side square labels.
+      let largeLabelSize = 20;
+      drawLabel(context, p[12], [0, 0], a * a, largeLabelSize, "#fff");
+      drawLabel(context, p[13], [0, 0], b * b, largeLabelSize, "#fff");
+      drawLabel(context, p[14], [0, 0], c * c, largeLabelSize, "#fff");
+    }
+
+    function updateOutputValues(a, b, c) {
+      document
+        .querySelectorAll('[data-value="a"]')
+        .forEach((e) => (e.innerText = formatNumericalLabel(a)));
+
+      document
+        .querySelectorAll('[data-value="b"]')
+        .forEach((e) => (e.innerText = formatNumericalLabel(b)));
+
+      document
+        .querySelectorAll('[data-value="c"]')
+        .forEach((e) => (e.innerText = formatNumericalLabel(c)));
+
+      document
+        .querySelectorAll('[data-value="aSqr"]')
+        .forEach((e) => (e.innerText = formatNumericalLabel(a * a)));
+
+      document
+        .querySelectorAll('[data-value="bSqr"]')
+        .forEach((e) => (e.innerText = formatNumericalLabel(b * b)));
+
+      document
+        .querySelectorAll('[data-value="cSqr"]')
+        .forEach((e) => (e.innerText = formatNumericalLabel(c * c)));
+    }
+
+    function update() {
+      const canvas = document.getElementById("canvas");
+      const context = canvas.getContext("2d");
+
+      canvas.width = canvas.getBoundingClientRect().width;
+      canvas.height = canvas.getBoundingClientRect().height;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+
+      let a = parseFloat(document.getElementById("a").value);
+      let b = parseFloat(document.getElementById("b").value);
+      if (isNaN(a) || a <= 0 || isNaN(b) || b <= 0) {
+        return;
+      }
+
+      let c = Math.sqrt(a * a + b * b);
+
+      let aSqr = a * a;
+      let bSqr = b * b;
+      let cSqr = c * c;
+
+      let p = calculateWorldSpacePoints(a, b, c);
+
+      transformPointsIntoScreenSpace(p);
+
+      drawDiagram(context, a, b, c, p);
+
+      updateOutputValues(a, b, c);
+    }
+
+    function drawLabel(context, p, nudge, text, size, colour) {
+      if (typeof text == "number") {
+        text = formatNumericalLabel(text);
+      }
+
+      context.fillStyle = colour;
+      context.font = size + "px Arial";
+      let textMetrics = context.measureText(text);
+
+      let borderSize = 4;
+      let halfTextWidth = textMetrics.width / 2;
+      let halfTextHeight = textMetrics.actualBoundingBoxAscent / 2;
+
+      context.fillText(
+        text,
+        p[0] - halfTextWidth + nudge[0] * (halfTextWidth + borderSize),
+        p[1] + halfTextHeight + nudge[1] * (halfTextHeight + borderSize)
+      );
+    }
+
+    function formatNumericalLabel(n) {
+      return (Math.floor(n) == n ? n.toString() : n.toFixed(3)).replace(
+        ".000",
+        ""
+      );
+      //s = n.toFixed(2);
+      //return s.replace(".00", "");
+      return s;
+    }
+
+    update();
+
+    window.onresize = update;
+  </script>
+</html>
