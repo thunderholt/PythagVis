@@ -363,13 +363,12 @@
     }
 
     function formatNumericalLabel(n) {
-      return (Math.floor(n) == n ? n.toString() : n.toFixed(3)).replace(
-        ".000",
-        ""
-      );
-      //s = n.toFixed(2);
-      //return s.replace(".00", "");
-      return s;
+      return round(n, 3);
+    }
+
+    function round(n, numberOfDecimalPlaces) {
+      let multiplier = Math.pow(10, numberOfDecimalPlaces);
+      return Math.round((n *= multiplier)) / multiplier;
     }
 
     update();
